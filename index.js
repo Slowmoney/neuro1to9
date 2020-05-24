@@ -1,5 +1,5 @@
 class Button {
-    constructor(xy = [0, 0, 0, 0, 50, 50], attr = [{ checkBox: true }], callback) {
+    constructor(xy = [0, 0, 0, 0, 50, 50], name = "", attr = [{ checkBox: true }], callback) {
         window.canvasButtons.push(this)
         this.x = (xy[0] == undefined) ? 0 : xy[0];
 
@@ -11,7 +11,8 @@ class Button {
         this.boxszy = (xy[5] == undefined) ? 50 : xy[5];
 
         this.checkBox = attr[0].checkBox;
-
+        this.stroke = attr[0].stroke;
+        this.name = name;
         this.a = [];
         for (let x = 0; x < this.x; x++) {
             for (let y = 0; y < this.y; y++) {
@@ -28,36 +29,52 @@ class Button {
         }
         this.callback = callback;
     }
-    click = (x, y) => {
-        this.a.forEach((b) => {
-            if ((x >= b.x && x <= b.x + this.boxszx) && (y >= b.y && y <= b.y + this.boxszy)) {
+    click = (x, y, t) => {
+        let i;
+        this.a.forEach((b, ib) => {
+            if ((x >= b.x && x < b.x + this.boxszx) && (y >= b.y && y < b.y + this.boxszy)) {
                 if (this.checkBox) {
-                    b.checked = !b.checked;
+                    if (t) {
+                        b.checked = t;
+                    } else {
+                        b.checked = !b.checked;
+                    }
+
 
 
                 }
                 if (typeof (this.callback) == "function") {
                     this.callback(this);
                 }
-
+                i = ib;
+                return;
             }
         });
+        return i;
     }
     draw = () => {
-        this.a.forEach((e) => {
-            this.drawBox(e.x, e.y, e.color, e.checked, this.boxszx, this.boxszy)
+        //this.drawBox(this.offsetX, this.offsetY, "#fff", false, this.boxszx * this.x, this.boxszy * this.y, true)
+        this.a.forEach((e, i) => {
+            this.drawBox({ x: e.x, y: e.y, color: e.color, c: e.checked, szx: this.boxszx, szy: this.boxszy, s: this.stroke, n: i })
         });
+
     }
-    drawBox = (x, y, color, c, szx, szy) => {
+    drawBox = (options = { x, y, color, c, szx, szy, s, n }) => {
 
         ctx.save();
+
         ctx.beginPath();
-        ctx.rect(x, y, szx, szy);
-        if (c) {
-            ctx.fillStyle = color;
+
+        ctx.rect(options.x, options.y, options.szx, options.szy);
+
+        if (options.c) {
+            ctx.fillStyle = options.color;
             ctx.fill()
         }
-        ctx.stroke();
+        if (options.s) {
+            ctx.stroke();
+        }
+        ctx.addHitRegion({ id: [options.n, this.name] })
         ctx.restore()
     }
 };
@@ -67,21 +84,27 @@ class NeuroCanvas {
         this.ctx = ctx;
         this.net = net;
 
-        this.xoffset = 55;
-        this.leftoffset = 50;
+        this.xoffset = 0;
+        this.leftoffset = 575;
         this.radius = 50;
-        this.offset = 55;
+        this.offset = 50;
         console.log(net)
-        this.topoffset = (Math.max.apply(null, this.net.sizes) * this.offset / 2) + 300;
+        //this.topoffset = (Math.max.apply(null, this.net.sizes) * this.offset / 2) + 300;
+        this.topoffset = 250;
         this.text = {
-            font: "3px serif",
-            offx: 25,
+            font: "20px serif",
+            offx: 80,
             offy: 7
         };
         this.layers = [];
-        this.net.sizes.forEach((e, i) => {
-            this.layers.push(this.getLayer(i, e));
-        });
+        try {
+            this.net.sizes.forEach((e, i) => {
+                this.layers.push(this.getLayer(i, e));
+            });
+        } catch (error) {
+
+        }
+
     }
     toBIN(num) {
         var out = "", bit = 1;
@@ -100,13 +123,14 @@ class NeuroCanvas {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
 
-/*         for (let i = 0; i < this.layers.length - 1; i++) {
-            this.drawLines(this.layers[i], this.layers[i + 1], net.weights[i + 1])
-        }
-        this.layers.forEach((e, i) => {
-            this.drawLayers(e, net.outputs[i])
-        })
-         */
+        /*  for (let i = 0; i < this.layers.length - 1; i++) {
+             this.drawLines(this.layers[i], this.layers[i + 1], net.weights[i + 1])
+         } */
+        /*  this.layers.forEach((e, i) => {
+             this.drawLayers(e, net.outputs[i])
+         }) */
+
+        this.drawLayers(this.layers[this.layers.length - 1], net.outputs[this.layers.length - 1])
         this.drawBut();
 
     }
@@ -174,8 +198,6 @@ class NeuroCanvas {
         this.ctx.beginPath();
         this.ctx.moveTo(x0, y0);
         this.ctx.lineTo(x1, y1);
-        //let x   = hslToRgb(color,1,0.5)
-        //this.ctx.strokeStyle = "rgb(" +x[0] + "," + x[1] + "," + x[2] + ")"
         this.ctx.strokeStyle = "rgb(" + color * 0 + "," + color * 255 + "," + 0 + ")"
         this.ctx.lineWidth = color * 5;
         this.ctx.stroke();
@@ -217,6 +239,7 @@ class NeuroCanvas {
         return l
     }
 };
+let trainBoxSZ = 10
 window.canvasButtons = []
 var canvas = document.getElementById("canvas");
 var ctx = canvas.getContext("2d");
@@ -224,107 +247,136 @@ canvas.width = 2024;
 canvas.height = 2024;
 const config = {
     binaryThresh: 0.5, // ¯\_(ツ)_/¯
-    hiddenLayers: [7, 5, 3], // array of ints for the sizes of the hidden layers in the network
+    hiddenLayers: [75, 50, 25], // array of ints for the sizes of the hidden layers in the network
     activation: 'sigmoid' // supported activation types: ['sigmoid', 'relu', 'leaky-relu', 'tanh']
 
 };
 const net = new brain.NeuralNetwork(config);
 const trainConfig = {
     // Defaults values --> expected validation
-    iterations: 10000, // the maximum times to iterate the training data --> number greater than 0
-    errorThresh: 0.005, // the acceptable error percentage from training data --> number between 0 and 1
-    log: false, // true to use console.log, when a function is supplied it is used --> Either true or a function
-    logPeriod: 10, // iterations between logging out --> number greater than 0
-    learningRate: 0.3, // scales with delta to effect training rate --> number between 0 and 1
+    iterations: 50000, // the maximum times to iterate the training data --> number greater than 0
+    errorThresh: 0.001, // the acceptable error percentage from training data --> number between 0 and 1
+    log: true, // true to use console.log, when a function is supplied it is used --> Either true or a function
+    logPeriod: 50, // iterations between logging out --> number greater than 0
+    learningRate: 0.5, // scales with delta to effect training rate --> number between 0 and 1
     momentum: 0.1, // scales with next layer's change value --> number between 0 and 1
     callback: null, // a periodic call back that can be triggered while training --> null or function
     callbackPeriod: 10, // the number of iterations through the training data between callback calls --> number greater than 0
-    timeout: Infinity, // the max number of milliseconds to train for --> number greater than 0
+    timeout: 20000, // the max number of milliseconds to train for --> number greater than 0
 }
 getTrainSet = (n, out = [0]) => {
+
     let trainingset = [{
-        input: new Int16Array(n),
+        input: new Array(n).fill(0),
         output: out
     }]
     try {
 
         trainingset = JSON.parse(localStorage.getItem("trainingset"))
-
+        if (trainingset[0].input.length != n) {
+            trainingset = [{
+                input: new Array(n).fill(0),
+                output: out
+            }];
+        }
         if (typeof (trainingset[0]) != "object") {
 
             trainingset = [{
-                input: new Int16Array(n),
+                input: new Array(n).fill(0),
                 output: out
             }];
         }
     } catch (error) {
         trainingset = [{
-            input: new Int16Array(n),
+            input: new Array(n).fill(0),
             output: out
         }]
     }
     return trainingset;
 }
-let trainingset = getTrainSet(4 ** 2, [0, 1]);
-//net.train(trainingset, trainConfig);
-let nCanvas = new NeuroCanvas(ctx, net);
-let mouse = { drag: [null, null, null, false], pressed: false }
-let drag = [null, null, null, false];
-canvas.addEventListener("click", (e) => {
-    window.canvasButtons.forEach((but) => {
-        but.click(e.offsetX, e.offsetY);
+
+let trainingset = getTrainSet(trainBoxSZ ** 2, new Array(10).fill(0));
+
+net.trainAsync(trainingset, trainConfig).then(res => {
+       
+    requestAnimationFrame(loop)
+})
+    .catch((e)=>{
+         console.log(e)
     });
+let nCanvas = new NeuroCanvas(ctx, net);
+let mouse = {
+    drag: [null, null, null, false],
+    pressed: false,
+    draw: {
+        prev: [0, 0]
+    }
+}
+canvas.addEventListener("click", (e) => {
+
 
     nCanvas.click(e.offsetX, e.offsetY, (e) => {
-        drag[0] = e[0];
-        drag[1] = e[1];
-        drag[2] = e[2];
-        drag[3] = !drag[3];
+        mouse.drag[0] = e[0];
+        mouse.drag[1] = e[1];
+        mouse.drag[2] = e[2];
+        mouse.drag[3] = !mouse.drag[3];
+        // nCanvas.layers[e[1]][e[2]] = [e.offsetX, e.offsetY]
     });
     requestAnimationFrame(loop)
 });
+
 canvas.addEventListener("mousemove", (e) => {
-    if (drag[3]) {
-        nCanvas.layers[drag[1]][drag[2]] = [e.offsetX, e.offsetY]
-        requestAnimationFrame(loop)
+
+    if (mouse.drag[3]) {
+        //nCanvas.layers[mouse.drag[1]][mouse.drag[2]] = [e.offsetX, e.offsetY]
+        // requestAnimationFrame(loop)
     }
 
     if (mouse.pressed) {
-        this.ctx.save();
-        this.ctx.beginPath();
-        this.ctx.rect(e.offsetX, e.offsetY, 1, 1);
-        this.ctx.stroke();
-        this.ctx.restore()
+        if (e.region && e.region.split(",")[1] == "input") {
+            window.canvasButtons[0].a[e.region.split(",")[0]].checked = true;
+        }
+
+        nCanvas.drawLine(e.offsetX, e.offsetY, mouse.draw.prev[0], mouse.draw.prev[1])
+
+        mouse.draw.prev = [e.offsetX, e.offsetY]
+
 
     }
 });
 canvas.addEventListener("mousedown", (e) => {
     mouse.pressed = true;
-
+    mouse.draw.prev = [e.offsetX, e.offsetY]
+    window.canvasButtons.forEach((but) => {
+        but.click(e.offsetX, e.offsetY);
+    });
 });
 canvas.addEventListener("mouseup", (e) => {
     mouse.pressed = false;
 
 });
 loop = () => {
-/*     let run = [];
-    buttons.a.forEach((b) => {
+    let run = [];
+    inputs.a.forEach((b) => {
         run.push(b.checked ? 1 : 0)
     })
 
-    net.run(run); */
+    net.run(run);
     nCanvas.draw();
 
 
 }
+
+
+
 let offx = 0;
 let offy = 0;
-let buttons = new Button([20, 20, 0, 0, 30, 30], [{ checkBox: true }]);
-/* let outputs = new Button([1, 2, 800, 0], [{ checkBox: true }]);
-let funcbut = new Button([1, 1, 500, 0], [{ checkBox: false }], () => {
+let inputs = new Button([trainBoxSZ, trainBoxSZ, 0, 0, 40, 40], "input", [{ checkBox: true, stroke: true }]);
+let outputs = new Button([1, 10, 600, 0, 50, 50], "output", [{ checkBox: true, stroke: true }]);
+let funcbut = new Button([1, 1, 400, 0], "train", [{ checkBox: false, stroke: true }], () => {
 
     let input = [];
-    buttons.a.forEach((b) => {
+    inputs.a.forEach((b) => {
         input.push(b.checked ? 1 : 0)
     });
     let output = [];
@@ -336,19 +388,39 @@ let funcbut = new Button([1, 1, 500, 0], [{ checkBox: false }], () => {
         output: output
     });
     console.log(trainingset)
-    net.train(trainingset, trainConfig);
     localStorage.setItem("trainingset", JSON.stringify(trainingset))
-});
-let random = new Button([1, 1, 600, 0], [{ checkBox: false }], () => {
+    net.trainAsync(trainingset, trainConfig).then(res => {
+       
+        requestAnimationFrame(loop)
+    })
+        .catch((e)=>{
+             console.log(e)
+        });
 
-    buttons.a.forEach((e) => {
+
+});
+let clear = new Button([1, 1, 400, 100], "clear", [{ checkBox: false, stroke: true }], () => {
+
+
+    inputs.a.forEach((b) => {
+        b.checked = false;
+    });
+
+    outputs.a.forEach((b) => {
+        b.checked = false;
+    });
+
+});
+let random = new Button([1, 1, 400, 400],"random" ,[{  checkBox: false, stroke: true }], () => {
+
+    inputs.a.forEach((e) => {
         e.checked = Math.random() > 0.5 ? true : false
 
 
     })
 
 });
-let box = new Button([1, 1, 700, 0], [{ checkBox: false }], () => {
+/* let box = new Button([1, 1, 700, 0], [{ checkBox: false }], () => {
     buttons.a.forEach((e) => { e.checked = false })
     let szx = 2;
     let szy = 2;
@@ -372,7 +444,7 @@ let box = new Button([1, 1, 700, 0], [{ checkBox: false }], () => {
 
 
 
-}); */
+});  */
 
 requestAnimationFrame(loop)
 
